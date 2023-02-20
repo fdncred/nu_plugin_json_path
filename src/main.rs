@@ -1,8 +1,8 @@
 mod json_path;
 use nu_plugin::{serve_plugin, EvaluatedCall, LabeledError, MsgPackSerializer, Plugin};
 use nu_protocol::{
-    ast::PathMember, Category, PluginExample, PluginSignature, ShellError, Spanned, SyntaxShape,
-    Value,
+    ast::PathMember, Category, PluginExample, PluginSignature, ShellError, Span, Spanned,
+    SyntaxShape, Value,
 };
 use serde_json::Value as SerdeJsonValue;
 use serde_json_path::JsonPathExt;
@@ -47,7 +47,7 @@ impl Plugin for JsonPath {
         let param: Option<Spanned<String>> = call.opt(0)?;
         let span = call.head;
 
-        eprintln!("input_type: {:?}", input.get_type());
+        // eprintln!("input_type: {:?}", input.get_type());
         let json_path_results = match input {
             Value::String { val, span } => perform_json_path_query(val, &param, span)?,
             Value::Record {
@@ -60,7 +60,7 @@ impl Plugin for JsonPath {
                 perform_json_path_query(&raw, &param, span)?
             }
             v => {
-                eprintln!("here");
+                // eprintln!("here");
                 return Err(LabeledError {
                     label: "Expected something from pipeline".into(),
                     msg: format!("requires some input, got {}", v.get_type()),
@@ -124,11 +124,51 @@ fn perform_json_path_query(
         .unwrap()
         .all()
         .into_iter()
-        .map(|v| Value::String {
-            val: v.to_string(),
-            span: *span,
-        })
+        .map(|v| convert_sjson_to_value(v, *span))
         .collect())
+}
+
+pub fn convert_sjson_to_value(value: &SerdeJsonValue, span: Span) -> Value {
+    match value {
+        SerdeJsonValue::Array(array) => {
+            let v: Vec<Value> = array
+                .iter()
+                .map(|x| convert_sjson_to_value(x, span))
+                .collect();
+
+            Value::List { vals: v, span }
+        }
+        SerdeJsonValue::Bool(b) => Value::Bool { val: *b, span },
+        SerdeJsonValue::Number(f) => {
+            if f.is_f64() {
+                Value::Float {
+                    val: f.as_f64().unwrap(),
+                    span,
+                }
+            } else {
+                Value::Int {
+                    val: f.as_i64().unwrap(),
+                    span,
+                }
+            }
+        }
+        SerdeJsonValue::Null => Value::Nothing { span },
+        SerdeJsonValue::Object(k) => {
+            let mut cols = vec![];
+            let mut vals = vec![];
+
+            for item in k {
+                cols.push(item.0.clone());
+                vals.push(convert_sjson_to_value(item.1, span));
+            }
+
+            Value::Record { cols, vals, span }
+        }
+        SerdeJsonValue::String(s) => Value::String {
+            val: s.clone(),
+            span,
+        },
+    }
 }
 
 pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, ShellError> {
