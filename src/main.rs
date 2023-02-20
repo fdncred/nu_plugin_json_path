@@ -1,5 +1,4 @@
 mod json_path;
-use nu_json::Value as NuJsonValue;
 use nu_plugin::{serve_plugin, EvaluatedCall, LabeledError, MsgPackSerializer, Plugin};
 use nu_protocol::{
     ast::PathMember, Category, PluginExample, PluginSignature, ShellError, Spanned, SyntaxShape,
@@ -50,34 +49,15 @@ impl Plugin for JsonPath {
 
         eprintln!("input_type: {:?}", input.get_type());
         let json_path_results = match input {
-            Value::String { val, span } => {
-                let serde_json: SerdeJsonValue = serde_json::from_str(&input.as_string()?).unwrap();
-
-                serde_json
-                    .json_path(&param.unwrap().item)
-                    .unwrap()
-                    .all()
-                    .into_iter()
-                    .map(|v| Value::String {
-                        val: v.to_string(),
-                        span: *span,
-                    })
-                    .collect()
-            }
-            Value::Record { cols, vals, span } => {
+            Value::String { val, span } => perform_json_path_query(val, &param, span)?,
+            Value::Record {
+                cols: _cols,
+                vals: _vals,
+                span,
+            } => {
                 let json_value = value_to_json_value(&input)?;
                 let raw = serde_json::to_string(&json_value).unwrap();
-                let serde_json: SerdeJsonValue = serde_json::from_str(&raw).unwrap();
-                serde_json
-                    .json_path(&param.unwrap().item)
-                    .unwrap()
-                    .all()
-                    .into_iter()
-                    .map(|v| Value::String {
-                        val: v.to_string(),
-                        span: *span,
-                    })
-                    .collect()
+                perform_json_path_query(&raw, &param, span)?
             }
             v => {
                 eprintln!("here");
@@ -88,37 +68,6 @@ impl Plugin for JsonPath {
                 });
             }
         };
-
-        // let json_value = value_to_json_value(&input)?;
-        // let raw = serde_json::to_string(&json_value).unwrap();
-        // eprintln!("raw: {}", raw);
-        // eprintln!("before serde_json::from_str");
-        // let serde_json: SerdeJsonValue = serde_json::from_str(&input.as_string()?).unwrap();
-        // eprintln!("after serde_json::from_str");
-        // let json_path_results = match input {
-        //     Value::String { val, span } => {
-        //         // crate::json_path::json_path_do_something(param, val, *span)?
-        //         // json_value.json_path(&param.unwrap().item).unwrap().all()
-        //         serde_json
-        //             .json_path(&param.unwrap().item)
-        //             .unwrap()
-        //             .all()
-        //             .into_iter()
-        //             .map(|v| Value::String {
-        //                 val: v.to_string(),
-        //                 span: *span,
-        //             })
-        //             .collect()
-        //     }
-        //     v => {
-        //         eprintln!("here");
-        //         return Err(LabeledError {
-        //             label: "Expected something from pipeline".into(),
-        //             msg: format!("requires some input, got {}", v.get_type()),
-        //             span: Some(call.head),
-        //         });
-        //     }
-        // };
 
         let ret_list = Value::List {
             vals: json_path_results,
@@ -164,48 +113,88 @@ impl Plugin for JsonPath {
     }
 }
 
-pub fn value_to_json_value(v: &Value) -> Result<NuJsonValue, ShellError> {
+fn perform_json_path_query(
+    input: &String,
+    param: &Option<Spanned<String>>,
+    span: &nu_protocol::Span,
+) -> Result<Vec<Value>, LabeledError> {
+    let serde_json: SerdeJsonValue = serde_json::from_str(&input).unwrap();
+    Ok(serde_json
+        .json_path(&param.as_ref().unwrap().item)
+        .unwrap()
+        .all()
+        .into_iter()
+        .map(|v| Value::String {
+            val: v.to_string(),
+            span: *span,
+        })
+        .collect())
+}
+
+pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, ShellError> {
     Ok(match v {
-        Value::Bool { val, .. } => NuJsonValue::Bool(*val),
-        Value::Filesize { val, .. } => NuJsonValue::I64(*val),
-        Value::Duration { val, .. } => NuJsonValue::I64(*val),
-        Value::Date { val, .. } => NuJsonValue::String(val.to_string()),
-        Value::Float { val, .. } => NuJsonValue::F64(*val),
-        Value::Int { val, .. } => NuJsonValue::I64(*val),
-        Value::Nothing { .. } => NuJsonValue::Null,
-        Value::String { val, .. } => NuJsonValue::String(val.to_string()),
-        Value::CellPath { val, .. } => NuJsonValue::Array(
+        Value::Bool { val, .. } => SerdeJsonValue::Bool(*val),
+        Value::Filesize { val, .. } => SerdeJsonValue::Number((*val).into()),
+        Value::Duration { val, .. } => SerdeJsonValue::Number((*val).into()),
+        Value::Date { val, .. } => SerdeJsonValue::String(val.to_string()),
+        Value::Float { val, span } => {
+            SerdeJsonValue::Number(serde_json::Number::from_f64(*val).ok_or(0.0).map_err(|_| {
+                //FIXME: This error needs to be more descriptive
+                ShellError::CantConvert(
+                    "cant convert".to_string(),
+                    "something else".to_string(),
+                    *span,
+                    None,
+                )
+            })?)
+        }
+        Value::Int { val, .. } => SerdeJsonValue::Number((*val).into()),
+        Value::Nothing { .. } => SerdeJsonValue::Null,
+        Value::String { val, .. } => SerdeJsonValue::String(val.to_string()),
+        Value::CellPath { val, .. } => SerdeJsonValue::Array(
             val.members
                 .iter()
                 .map(|x| match &x {
-                    PathMember::String { val, .. } => Ok(NuJsonValue::String(val.clone())),
-                    PathMember::Int { val, .. } => Ok(NuJsonValue::U64(*val as u64)),
+                    PathMember::String { val, .. } => Ok(SerdeJsonValue::String(val.clone())),
+                    PathMember::Int { val, .. } => Ok(SerdeJsonValue::Number((*val as u64).into())),
                 })
-                .collect::<Result<Vec<NuJsonValue>, ShellError>>()?,
+                .collect::<Result<Vec<SerdeJsonValue>, ShellError>>()?,
         ),
 
-        Value::List { vals, .. } => NuJsonValue::Array(json_list(vals)?),
+        Value::List { vals, .. } => SerdeJsonValue::Array(json_list(vals)?),
         Value::Error { error } => return Err(error.clone()),
-        Value::Closure { .. } | Value::Block { .. } | Value::Range { .. } => NuJsonValue::Null,
-        Value::Binary { val, .. } => {
-            NuJsonValue::Array(val.iter().map(|x| NuJsonValue::U64(*x as u64)).collect())
-        }
+        Value::Closure { .. } | Value::Block { .. } | Value::Range { .. } => SerdeJsonValue::Null,
+        Value::Binary { val, .. } => SerdeJsonValue::Array(
+            val.iter()
+                .map(|x| SerdeJsonValue::Number((*x as u64).into()))
+                .collect(),
+        ),
         Value::Record { cols, vals, .. } => {
-            let mut m = nu_json::Map::new();
+            let mut m = serde_json::Map::new();
             for (k, v) in cols.iter().zip(vals) {
                 m.insert(k.clone(), value_to_json_value(v)?);
             }
-            NuJsonValue::Object(m)
+            SerdeJsonValue::Object(m)
         }
         Value::LazyRecord { val, .. } => {
             let collected = val.collect()?;
             value_to_json_value(&collected)?
         }
-        Value::CustomValue { val, .. } => val.to_json(),
+        Value::CustomValue { val, span } => {
+            serde_json::from_str(&val.value_string()).map_err(|_| {
+                //FIXME: This error needs to be more descriptive
+                ShellError::CantConvert(
+                    "cant convert".to_string(),
+                    "something else".to_string(),
+                    *span,
+                    None,
+                )
+            })?
+        }
     })
 }
 
-fn json_list(input: &[Value]) -> Result<Vec<NuJsonValue>, ShellError> {
+fn json_list(input: &[Value]) -> Result<Vec<SerdeJsonValue>, ShellError> {
     let mut out = vec![];
 
     for value in input {
