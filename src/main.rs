@@ -43,11 +43,11 @@ impl Plugin for JsonPath {
         input: &Value,
     ) -> Result<Value, LabeledError> {
         assert_eq!(name, "json path");
-        let param: Option<Spanned<String>> = call.opt(0)?;
+        let json_query: Option<Spanned<String>> = call.opt(0)?;
         let span = call.head;
 
         let json_path_results = match input {
-            Value::String { val, span } => perform_json_path_query(val, &param, span)?,
+            Value::String { val, span } => perform_json_path_query(val, &json_query, span)?,
             Value::Record {
                 cols: _cols,
                 vals: _vals,
@@ -55,7 +55,7 @@ impl Plugin for JsonPath {
             } => {
                 let json_value = value_to_json_value(input)?;
                 let raw = serde_json::to_string(&json_value).unwrap();
-                perform_json_path_query(&raw, &param, span)?
+                perform_json_path_query(&raw, &json_query, span)?
             }
             v => {
                 return Err(LabeledError {
@@ -77,17 +77,38 @@ impl Plugin for JsonPath {
 
 fn perform_json_path_query(
     input: &str,
-    param: &Option<Spanned<String>>,
+    json_query: &Option<Spanned<String>>,
     span: &nu_protocol::Span,
 ) -> Result<Vec<Value>, LabeledError> {
-    let serde_json: SerdeJsonValue = serde_json::from_str(input).unwrap();
-    Ok(serde_json
-        .json_path(&param.as_ref().unwrap().item)
-        .unwrap()
-        .all()
-        .into_iter()
-        .map(|v| convert_sjson_to_value(v, *span))
-        .collect())
+    let serde_json: SerdeJsonValue = serde_json::from_str(input).map_err(|e| LabeledError {
+        label: "Error parsing json".into(),
+        msg: e.to_string(),
+        span: Some(*span),
+    })?;
+
+    let query = match &json_query.as_ref() {
+        Some(p) => &p.item,
+        None => {
+            return Err(LabeledError {
+                label: "Error parsing json query string".into(),
+                msg: "No json path query provided".to_string(),
+                span: Some(*span),
+            })
+        }
+    };
+
+    match serde_json.json_path(query) {
+        Ok(val) => Ok(val
+            .all()
+            .into_iter()
+            .map(|v| convert_sjson_to_value(v, *span))
+            .collect()),
+        Err(e) => Err(LabeledError {
+            label: "Error parsing json query".into(),
+            msg: e.to_string(),
+            span: Some(*span),
+        }),
+    }
 }
 
 pub fn convert_sjson_to_value(value: &SerdeJsonValue, span: Span) -> Value {

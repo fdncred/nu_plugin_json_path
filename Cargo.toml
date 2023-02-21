@@ -1,10 +1,10 @@
 [package]
 name = "nu_plugin_json_path"
-version = "0.0.2"
+version = "0.0.3"
 authors = ["Darren Schroeder"]
 edition = "2021"
 repository = "https://github.com/fdncred/nu_plugin_json_path"
-description = "a nushell plugin called json_path"
+description = "a nushell plugin created to parse json files using jsonpath"
 license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
