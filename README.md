@@ -255,3 +255,19 @@ open test.json | json path '$..*'
 │ 26 │ The Lord of the Rings  │
 ╰────┴────────────────────────╯
 ```
+# Building, Installing, and Registering
+
+Since this plugin isn't published on crates.io, you will have to have the nushell repository cloned in order to build it.
+
+This is a nushell script provided in [the first issue](https://github.com/fdncred/nu_plugin_json_path/issues/1). In that issue @amtoine explains, "as my repos are located in $env.GIT_REPOS_HOME/<host>/<owner>/<repo>, i had to run the following".
+
+```sh
+[nu-plugin nu-protocol] | each {|crate|
+    let local = ($env.GIT_REPOS_HOME | path join "github.com" "nushell" "nushell" "crates" $crate)
+    cargo add $crate --path $local
+}
+```
+
+Once the cargo.toml is updated, all you have to do is `cargo install --path .` and then, from within nushell do a `register /path/to/nu_plugin_json_path`.
+
+Good luck!
