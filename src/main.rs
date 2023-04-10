@@ -4,7 +4,7 @@ use nu_protocol::{
     SyntaxShape, Value,
 };
 use serde_json::Value as SerdeJsonValue;
-use serde_json_path::JsonPathExt;
+use serde_json_path::JsonPath;
 
 // json path examples
 // https://www.ietf.org/archive/id/draft-ietf-jsonpath-base-10.html#section-1.5
@@ -15,15 +15,15 @@ use serde_json_path::JsonPathExt;
 // serde json path grammar
 // https://github.com/hiltontj/serde_json_path/blob/main/grammar.abnf
 
-struct JsonPath;
+struct NuJsonPath;
 
-impl JsonPath {
+impl NuJsonPath {
     fn new() -> Self {
         Self {}
     }
 }
 
-impl Plugin for JsonPath {
+impl Plugin for NuJsonPath {
     fn signature(&self) -> Vec<PluginSignature> {
         vec![PluginSignature::build("json path")
             .usage("View json path results")
@@ -97,18 +97,18 @@ fn perform_json_path_query(
         }
     };
 
-    match serde_json.json_path(query) {
-        Ok(val) => Ok(val
-            .all()
-            .into_iter()
-            .map(|v| convert_sjson_to_value(v, *span))
-            .collect()),
-        Err(e) => Err(LabeledError {
-            label: "Error parsing json query".into(),
-            msg: e.to_string(),
-            span: Some(*span),
-        }),
-    }
+    let path = JsonPath::parse(query).map_err(|e| LabeledError {
+        label: "Error parsing json query".into(),
+        msg: e.to_string(),
+        span: Some(*span),
+    })?;
+
+    Ok(path
+        .query(&serde_json)
+        .all()
+        .into_iter()
+        .map(|v| convert_sjson_to_value(v, *span))
+        .collect())
 }
 
 pub fn convert_sjson_to_value(value: &SerdeJsonValue, span: Span) -> Value {
@@ -154,22 +154,23 @@ pub fn convert_sjson_to_value(value: &SerdeJsonValue, span: Span) -> Value {
     }
 }
 
-pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, ShellError> {
+pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
     Ok(match v {
         Value::Bool { val, .. } => SerdeJsonValue::Bool(*val),
         Value::Filesize { val, .. } => SerdeJsonValue::Number((*val).into()),
         Value::Duration { val, .. } => SerdeJsonValue::Number((*val).into()),
         Value::Date { val, .. } => SerdeJsonValue::String(val.to_string()),
         Value::Float { val, span } => {
-            SerdeJsonValue::Number(serde_json::Number::from_f64(*val).ok_or(0.0).map_err(|_| {
-                //FIXME: This error needs to be more descriptive
-                ShellError::CantConvert(
-                    "cant convert".to_string(),
-                    "something else".to_string(),
-                    *span,
-                    None,
-                )
-            })?)
+            SerdeJsonValue::Number(match serde_json::Number::from_f64(*val).ok_or(0.0) {
+                Ok(n) => n,
+                Err(e) => {
+                    return Err(LabeledError {
+                        label: format!("Error converting value: {val} to f64"),
+                        msg: format!("Error converting {e}").to_string(),
+                        span: Some(*span),
+                    })
+                }
+            })
         }
         Value::Int { val, .. } => SerdeJsonValue::Number((*val).into()),
         Value::Nothing { .. } => SerdeJsonValue::Null,
@@ -185,8 +186,17 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, ShellError> {
         ),
 
         Value::List { vals, .. } => SerdeJsonValue::Array(json_list(vals)?),
-        Value::Error { error } => return Err(error.clone()),
-        Value::Closure { .. } | Value::Block { .. } | Value::Range { .. } => SerdeJsonValue::Null,
+        Value::Error { error } => {
+            return Err(LabeledError {
+                label: format!("Error found: {error}"),
+                msg: "Error found".to_string(),
+                span: Some(v.span()?),
+            })
+        }
+        Value::Closure { .. }
+        | Value::Block { .. }
+        | Value::Range { .. }
+        | Value::MatchPattern { .. } => SerdeJsonValue::Null,
         Value::Binary { val, .. } => SerdeJsonValue::Array(
             val.iter()
                 .map(|x| SerdeJsonValue::Number((*x as u64).into()))
@@ -204,15 +214,8 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, ShellError> {
             value_to_json_value(&collected)?
         }
         Value::CustomValue { val, span } => {
-            serde_json::from_str(&val.value_string()).map_err(|_| {
-                //FIXME: This error needs to be more descriptive
-                ShellError::CantConvert(
-                    "cant convert".to_string(),
-                    "something else".to_string(),
-                    *span,
-                    None,
-                )
-            })?
+            let collected = val.to_base_value(*span)?;
+            value_to_json_value(&collected)?
         }
     })
 }
@@ -228,14 +231,13 @@ fn json_list(input: &[Value]) -> Result<Vec<SerdeJsonValue>, ShellError> {
 }
 
 fn main() {
-    serve_plugin(&mut JsonPath::new(), MsgPackSerializer);
+    serve_plugin(&mut NuJsonPath::new(), MsgPackSerializer);
 }
 
 #[cfg(test)]
 mod test {
-    use serde_json::json;
-    use serde_json::Value as SerdeJsonValue;
-    use serde_json_path::JsonPathExt;
+    use serde_json::{json, Value as SerdeJsonValue};
+    use serde_json_path::JsonPath;
 
     fn spec_example_json() -> SerdeJsonValue {
         json!({
@@ -279,7 +281,8 @@ mod test {
     #[test]
     fn spec_example_1() {
         let value = spec_example_json();
-        let nodes = value.json_path("$.store.book[*].author").unwrap().all();
+        let path = JsonPath::parse("$.store.book[*].author").unwrap();
+        let nodes = path.query(&value).all();
         assert_eq!(
             nodes,
             vec![
@@ -294,7 +297,8 @@ mod test {
     #[test]
     fn spec_example_2() {
         let value = spec_example_json();
-        let nodes = value.json_path("$..author").unwrap().all();
+        let path = JsonPath::parse("$..author").unwrap();
+        let nodes = path.query(&value).all();
         assert_eq!(
             nodes,
             vec![
@@ -309,7 +313,8 @@ mod test {
     #[test]
     fn spec_example_3() {
         let value = spec_example_json();
-        let nodes = value.json_path("$.store.*").unwrap().all();
+        let path = JsonPath::parse("$.store.*").unwrap();
+        let nodes = path.query(&value).all();
         assert_eq!(nodes.len(), 2);
         assert!(nodes
             .iter()
@@ -319,57 +324,65 @@ mod test {
     #[test]
     fn spec_example_4() {
         let value = spec_example_json();
-        let nodes = value.json_path("$.store..price").unwrap().all();
+        let path = JsonPath::parse("$.store..price").unwrap();
+        let nodes = path.query(&value).all();
         assert_eq!(nodes, vec![399., 8.95, 12.99, 8.99, 22.99]);
     }
 
     #[test]
     fn spec_example_5() {
         let value = spec_example_json();
-        let q = value.json_path("$..book[2]").unwrap();
-        let node = q.one().unwrap();
-        assert_eq!(node, value.pointer("/store/book/2").unwrap());
+        let path = JsonPath::parse("$..book[2]").unwrap();
+        let node = path.query(&value).at_most_one().unwrap();
+        assert!(node.is_some());
+        assert_eq!(node, value.pointer("/store/book/2"));
     }
 
     #[test]
     fn spec_example_6() {
         let value = spec_example_json();
-        let q = value.json_path("$..book[-1]").unwrap();
-        let node = q.one().unwrap();
-        assert_eq!(node, value.pointer("/store/book/3").unwrap());
+        let path = JsonPath::parse("$..book[-1]").unwrap();
+        let node = path.query(&value).at_most_one().unwrap();
+        assert!(node.is_some());
+        assert_eq!(node, value.pointer("/store/book/3"));
     }
 
     #[test]
     fn spec_example_7() {
         let value = spec_example_json();
         {
-            let q = value.json_path("$..book[0,1]").unwrap();
-            assert_eq!(q.len(), 2);
+            let path = JsonPath::parse("$..book[0,1]").unwrap();
+            let nodes = path.query(&value).all();
+            assert_eq!(nodes.len(), 2);
         }
         {
-            let q = value.json_path("$..book[:2]").unwrap();
-            assert_eq!(q.len(), 2);
+            let path = JsonPath::parse("$..book[:2]").unwrap();
+            let nodes = path.query(&value).all();
+            assert_eq!(nodes.len(), 2);
         }
     }
 
     #[test]
     fn spec_example_8() {
         let value = spec_example_json();
-        let q = value.json_path("$..book[?(@.isbn)]").unwrap();
-        assert_eq!(q.len(), 2);
+        let path = JsonPath::parse("$..book[?(@.isbn)]").unwrap();
+        let nodes = path.query(&value);
+        assert_eq!(nodes.len(), 2);
     }
 
     #[test]
     fn spec_example_9() {
         let value = spec_example_json();
-        let q = value.json_path("$..book[?(@.price<10)]").unwrap();
-        assert_eq!(q.len(), 2);
+        let path = JsonPath::parse("$..book[?(@.price<10)]").unwrap();
+        let nodes = path.query(&value);
+        assert_eq!(nodes.len(), 2);
     }
 
     #[test]
     fn spec_example_10() {
         let value = spec_example_json();
-        let q = value.json_path("$..*").unwrap();
-        assert_eq!(q.len(), 27);
+        let path = JsonPath::parse("$..*").unwrap();
+        let nodes = path.query(&value);
+        assert_eq!(nodes.len(), 27);
     }
 }
