@@ -1,6 +1,6 @@
 use nu_plugin::{serve_plugin, EvaluatedCall, LabeledError, MsgPackSerializer, Plugin};
 use nu_protocol::{
-    ast::PathMember, Category, PluginExample, PluginSignature, ShellError, Span, Spanned,
+    ast::PathMember, Category, PluginExample, PluginSignature, Record, ShellError, Span, Spanned,
     SyntaxShape, Value,
 };
 use serde_json::Value as SerdeJsonValue;
@@ -48,11 +48,7 @@ impl Plugin for NuJsonPath {
 
         let json_path_results = match input {
             Value::String { val, span } => perform_json_path_query(val, &json_query, span)?,
-            Value::Record {
-                cols: _cols,
-                vals: _vals,
-                span,
-            } => {
+            Value::Record { val: _vals, span } => {
                 let json_value = value_to_json_value(input)?;
                 let raw = serde_json::to_string(&json_value).unwrap();
                 perform_json_path_query(&raw, &json_query, span)?
@@ -137,15 +133,11 @@ pub fn convert_sjson_to_value(value: &SerdeJsonValue, span: Span) -> Value {
         }
         SerdeJsonValue::Null => Value::Nothing { span },
         SerdeJsonValue::Object(k) => {
-            let mut cols = vec![];
-            let mut vals = vec![];
-
-            for item in k {
-                cols.push(item.0.clone());
-                vals.push(convert_sjson_to_value(item.1, span));
+            let mut rec = Record::new();
+            for (k, v) in k {
+                rec.push(k.clone(), convert_sjson_to_value(v, span));
             }
-
-            Value::Record { cols, vals, span }
+            Value::record(rec, span)
         }
         SerdeJsonValue::String(s) => Value::String {
             val: s.clone(),
@@ -186,11 +178,11 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
         ),
 
         Value::List { vals, .. } => SerdeJsonValue::Array(json_list(vals)?),
-        Value::Error { error } => {
+        Value::Error { error, .. } => {
             return Err(LabeledError {
                 label: format!("Error found: {error}"),
                 msg: "Error found".to_string(),
-                span: Some(v.span()?),
+                span: Some(v.span()),
             })
         }
         Value::Closure { .. }
@@ -202,11 +194,11 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
                 .map(|x| SerdeJsonValue::Number((*x as u64).into()))
                 .collect(),
         ),
-        Value::Record { cols, vals, .. } => {
+        Value::Record { val, .. } => {
             let mut m = serde_json::Map::new();
-            for (k, v) in cols.iter().zip(vals) {
-                m.insert(k.clone(), value_to_json_value(v)?);
-            }
+            val.iter().for_each(|(k, v)| {
+                m.insert(k.clone(), value_to_json_value(v).unwrap());
+            });
             SerdeJsonValue::Object(m)
         }
         Value::LazyRecord { val, .. } => {
