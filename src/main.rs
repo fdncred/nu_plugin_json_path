@@ -45,13 +45,14 @@ impl Plugin for NuJsonPath {
         assert_eq!(name, "json path");
         let json_query: Option<Spanned<String>> = call.opt(0)?;
         let span = call.head;
+        let input_span = &input.span();
 
         let json_path_results = match input {
-            Value::String { val, span } => perform_json_path_query(val, &json_query, span)?,
-            Value::Record { val: _vals, span } => {
+            Value::String { val, .. } => perform_json_path_query(val, &json_query, input_span)?,
+            Value::Record { val: _vals, .. } => {
                 let json_value = value_to_json_value(input)?;
                 let raw = serde_json::to_string(&json_value).unwrap();
-                perform_json_path_query(&raw, &json_query, span)?
+                perform_json_path_query(&raw, &json_query, input_span)?
             }
             v => {
                 return Err(LabeledError {
@@ -62,10 +63,7 @@ impl Plugin for NuJsonPath {
             }
         };
 
-        let ret_list = Value::List {
-            vals: json_path_results,
-            span,
-        };
+        let ret_list = Value::list(json_path_results, span);
 
         Ok(ret_list)
     }
@@ -115,23 +113,17 @@ pub fn convert_sjson_to_value(value: &SerdeJsonValue, span: Span) -> Value {
                 .map(|x| convert_sjson_to_value(x, span))
                 .collect();
 
-            Value::List { vals: v, span }
+            Value::list(v, span)
         }
-        SerdeJsonValue::Bool(b) => Value::Bool { val: *b, span },
+        SerdeJsonValue::Bool(b) => Value::bool(*b, span),
         SerdeJsonValue::Number(f) => {
             if f.is_f64() {
-                Value::Float {
-                    val: f.as_f64().unwrap(),
-                    span,
-                }
+                Value::float(f.as_f64().unwrap(), span)
             } else {
-                Value::Int {
-                    val: f.as_i64().unwrap(),
-                    span,
-                }
+                Value::int(f.as_i64().unwrap(), span)
             }
         }
-        SerdeJsonValue::Null => Value::Nothing { span },
+        SerdeJsonValue::Null => Value::nothing(span),
         SerdeJsonValue::Object(k) => {
             let mut rec = Record::new();
             for (k, v) in k {
@@ -139,27 +131,25 @@ pub fn convert_sjson_to_value(value: &SerdeJsonValue, span: Span) -> Value {
             }
             Value::record(rec, span)
         }
-        SerdeJsonValue::String(s) => Value::String {
-            val: s.clone(),
-            span,
-        },
+        SerdeJsonValue::String(s) => Value::string(s.clone(), span),
     }
 }
 
 pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
+    let val_span = v.span();
     Ok(match v {
         Value::Bool { val, .. } => SerdeJsonValue::Bool(*val),
         Value::Filesize { val, .. } => SerdeJsonValue::Number((*val).into()),
         Value::Duration { val, .. } => SerdeJsonValue::Number((*val).into()),
         Value::Date { val, .. } => SerdeJsonValue::String(val.to_string()),
-        Value::Float { val, span } => {
+        Value::Float { val, .. } => {
             SerdeJsonValue::Number(match serde_json::Number::from_f64(*val).ok_or(0.0) {
                 Ok(n) => n,
                 Err(e) => {
                     return Err(LabeledError {
                         label: format!("Error converting value: {val} to f64"),
                         msg: format!("Error converting {e}").to_string(),
-                        span: Some(*span),
+                        span: Some(val_span),
                     })
                 }
             })
@@ -205,8 +195,8 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
             let collected = val.collect()?;
             value_to_json_value(&collected)?
         }
-        Value::CustomValue { val, span } => {
-            let collected = val.to_base_value(*span)?;
+        Value::CustomValue { val, .. } => {
+            let collected = val.to_base_value(val_span)?;
             value_to_json_value(&collected)?
         }
     })
