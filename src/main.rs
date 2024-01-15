@@ -39,6 +39,7 @@ impl Plugin for NuJsonPath {
     fn run(
         &mut self,
         name: &str,
+        _config: &Option<Value>,
         call: &EvaluatedCall,
         input: &Value,
     ) -> Result<Value, LabeledError> {
@@ -175,10 +176,8 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
                 span: Some(v.span()),
             })
         }
-        Value::Closure { .. }
-        | Value::Block { .. }
-        | Value::Range { .. }
-        | Value::MatchPattern { .. } => SerdeJsonValue::Null,
+        Value::Closure { .. } | Value::Block { .. } | Value::Range { .. } => SerdeJsonValue::Null,
+        // | Value::MatchPattern { .. } => SerdeJsonValue::Null,
         Value::Binary { val, .. } => SerdeJsonValue::Array(
             val.iter()
                 .map(|x| SerdeJsonValue::Number((*x as u64).into()))
