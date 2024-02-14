@@ -157,7 +157,9 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
         }
         Value::Int { val, .. } => SerdeJsonValue::Number((*val).into()),
         Value::Nothing { .. } => SerdeJsonValue::Null,
-        Value::String { val, .. } => SerdeJsonValue::String(val.to_string()),
+        Value::String { val, .. } | Value::QuotedString { val, .. } => {
+            SerdeJsonValue::String(val.to_string())
+        }
         Value::CellPath { val, .. } => SerdeJsonValue::Array(
             val.members
                 .iter()
