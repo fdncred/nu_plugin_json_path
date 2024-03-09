@@ -1,4 +1,6 @@
-use nu_plugin::{serve_plugin, EvaluatedCall, LabeledError, MsgPackSerializer, Plugin};
+use nu_plugin::{
+    serve_plugin, EngineInterface, EvaluatedCall, LabeledError, MsgPackSerializer, Plugin,
+};
 use nu_protocol::{
     ast::PathMember, Category, PluginExample, PluginSignature, Record, ShellError, Span, Spanned,
     SyntaxShape, Value,
@@ -37,9 +39,9 @@ impl Plugin for NuJsonPath {
     }
 
     fn run(
-        &mut self,
+        &self,
         name: &str,
-        _config: &Option<Value>,
+        _engine: &EngineInterface,
         call: &EvaluatedCall,
         input: &Value,
     ) -> Result<Value, LabeledError> {
@@ -157,9 +159,7 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
         }
         Value::Int { val, .. } => SerdeJsonValue::Number((*val).into()),
         Value::Nothing { .. } => SerdeJsonValue::Null,
-        Value::String { val, .. } | Value::QuotedString { val, .. } => {
-            SerdeJsonValue::String(val.to_string())
-        }
+        Value::String { val, .. } => SerdeJsonValue::String(val.to_string()),
         Value::CellPath { val, .. } => SerdeJsonValue::Array(
             val.members
                 .iter()
@@ -200,6 +200,11 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
             let collected = val.to_base_value(val_span)?;
             value_to_json_value(&collected)?
         }
+        Value::Glob {
+            val: _val,
+            no_expand: _no_expand,
+            ..
+        } => todo!(),
     })
 }
 
