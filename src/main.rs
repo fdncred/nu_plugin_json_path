@@ -1,5 +1,6 @@
 use nu_plugin::{
     serve_plugin, EngineInterface, EvaluatedCall, LabeledError, MsgPackSerializer, Plugin,
+    PluginCommand, SimplePluginCommand,
 };
 use nu_protocol::{
     ast::PathMember, Category, PluginExample, PluginSignature, Record, ShellError, Span, Spanned,
@@ -7,6 +8,14 @@ use nu_protocol::{
 };
 use serde_json::Value as SerdeJsonValue;
 use serde_json_path::JsonPath;
+
+struct JsonPathPlugin;
+
+impl Plugin for JsonPathPlugin {
+    fn commands(&self) -> Vec<Box<dyn PluginCommand<Plugin = Self>>> {
+        vec![Box::new(NuJsonPath)]
+    }
+}
 
 // json path examples
 // https://www.ietf.org/archive/id/draft-ietf-jsonpath-base-10.html#section-1.5
@@ -19,15 +28,11 @@ use serde_json_path::JsonPath;
 
 struct NuJsonPath;
 
-impl NuJsonPath {
-    fn new() -> Self {
-        Self {}
-    }
-}
+impl SimplePluginCommand for NuJsonPath {
+    type Plugin = JsonPathPlugin;
 
-impl Plugin for NuJsonPath {
-    fn signature(&self) -> Vec<PluginSignature> {
-        vec![PluginSignature::build("json path")
+    fn signature(&self) -> PluginSignature {
+        PluginSignature::build("json path")
             .usage("View json path results")
             .required("query", SyntaxShape::String, "json path query")
             .category(Category::Experimental)
@@ -35,17 +40,16 @@ impl Plugin for NuJsonPath {
                 description: "List the authors of all books in the store".into(),
                 example: "open -r test.json | json path '$.store.book[*].author'".into(),
                 result: None,
-            }])]
+            }])
     }
 
     fn run(
         &self,
-        name: &str,
+        _config: &JsonPathPlugin,
         _engine: &EngineInterface,
         call: &EvaluatedCall,
         input: &Value,
     ) -> Result<Value, LabeledError> {
-        assert_eq!(name, "json path");
         let json_query: Option<Spanned<String>> = call.opt(0)?;
         let span = call.head;
         let input_span = &input.span();
@@ -219,7 +223,7 @@ fn json_list(input: &[Value]) -> Result<Vec<SerdeJsonValue>, ShellError> {
 }
 
 fn main() {
-    serve_plugin(&mut NuJsonPath::new(), MsgPackSerializer);
+    serve_plugin(&JsonPathPlugin, MsgPackSerializer);
 }
 
 #[cfg(test)]
