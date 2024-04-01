@@ -1,9 +1,9 @@
 use nu_plugin::{
-    serve_plugin, EngineInterface, EvaluatedCall, LabeledError, MsgPackSerializer, Plugin,
-    PluginCommand, SimplePluginCommand,
+    serve_plugin, EngineInterface, EvaluatedCall, MsgPackSerializer, Plugin, PluginCommand,
+    SimplePluginCommand,
 };
 use nu_protocol::{
-    ast::PathMember, Category, PluginExample, PluginSignature, Record, ShellError, Span, Spanned,
+    ast::PathMember, Category, Example, LabeledError, Record, ShellError, Signature, Span, Spanned,
     SyntaxShape, Value,
 };
 use serde_json::Value as SerdeJsonValue;
@@ -31,16 +31,25 @@ struct NuJsonPath;
 impl SimplePluginCommand for NuJsonPath {
     type Plugin = JsonPathPlugin;
 
-    fn signature(&self) -> PluginSignature {
-        PluginSignature::build("json path")
-            .usage("View json path results")
+    fn name(&self) -> &str {
+        "json path"
+    }
+
+    fn usage(&self) -> &str {
+        "View json path results"
+    }
+    fn signature(&self) -> Signature {
+        Signature::build(PluginCommand::name(self))
             .required("query", SyntaxShape::String, "json path query")
             .category(Category::Experimental)
-            .plugin_examples(vec![PluginExample {
-                description: "List the authors of all books in the store".into(),
-                example: "open -r test.json | json path '$.store.book[*].author'".into(),
-                result: None,
-            }])
+    }
+
+    fn examples(&self) -> Vec<Example> {
+        vec![Example {
+            description: "List the authors of all books in the store".into(),
+            example: "open -r test.json | json path '$.store.book[*].author'".into(),
+            result: None,
+        }]
     }
 
     fn run(
@@ -62,11 +71,11 @@ impl SimplePluginCommand for NuJsonPath {
                 perform_json_path_query(&raw, &json_query, input_span)?
             }
             v => {
-                return Err(LabeledError {
-                    label: "Expected some input from pipeline".into(),
-                    msg: format!("requires some input, got {}", v.get_type()),
-                    span: Some(call.head),
-                });
+                return Err(LabeledError::new(format!(
+                    "requires some input, got {}",
+                    v.get_type()
+                ))
+                .with_label("Expected some input from pipeline", call.head));
             }
         };
 
@@ -81,27 +90,19 @@ fn perform_json_path_query(
     json_query: &Option<Spanned<String>>,
     span: &nu_protocol::Span,
 ) -> Result<Vec<Value>, LabeledError> {
-    let serde_json: SerdeJsonValue = serde_json::from_str(input).map_err(|e| LabeledError {
-        label: "Error parsing json".into(),
-        msg: e.to_string(),
-        span: Some(*span),
-    })?;
+    let serde_json: SerdeJsonValue = serde_json::from_str(input)
+        .map_err(|e| LabeledError::new(e.to_string()).with_label("Error parsing json", *span))?;
 
     let query = match &json_query.as_ref() {
         Some(p) => &p.item,
         None => {
-            return Err(LabeledError {
-                label: "Error parsing json query string".into(),
-                msg: "No json path query provided".to_string(),
-                span: Some(*span),
-            })
+            return Err(LabeledError::new("No json path query provided")
+                .with_label("Error parsing json query string", *span));
         }
     };
 
-    let path = JsonPath::parse(query).map_err(|e| LabeledError {
-        label: "Error parsing json query".into(),
-        msg: e.to_string(),
-        span: Some(*span),
+    let path = JsonPath::parse(query).map_err(|e| {
+        LabeledError::new(e.to_string()).with_label("Error parsing json query", *span)
     })?;
 
     Ok(path
@@ -153,11 +154,8 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
             SerdeJsonValue::Number(match serde_json::Number::from_f64(*val).ok_or(0.0) {
                 Ok(n) => n,
                 Err(e) => {
-                    return Err(LabeledError {
-                        label: format!("Error converting value: {val} to f64"),
-                        msg: format!("Error converting {e}").to_string(),
-                        span: Some(val_span),
-                    })
+                    return Err(LabeledError::new(format!("Error converting {e}"))
+                        .with_label(format!("Error converting value: {val} to f64"), val_span));
                 }
             })
         }
@@ -176,11 +174,8 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
 
         Value::List { vals, .. } => SerdeJsonValue::Array(json_list(vals)?),
         Value::Error { error, .. } => {
-            return Err(LabeledError {
-                label: format!("Error found: {error}"),
-                msg: "Error found".to_string(),
-                span: Some(v.span()),
-            })
+            return Err(LabeledError::new("Error found")
+                .with_label(format!("Error found: {error}"), v.span()));
         }
         Value::Closure { .. } | Value::Block { .. } | Value::Range { .. } => SerdeJsonValue::Null,
         // | Value::MatchPattern { .. } => SerdeJsonValue::Null,
@@ -200,7 +195,7 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
             let collected = val.collect()?;
             value_to_json_value(&collected)?
         }
-        Value::CustomValue { val, .. } => {
+        Value::Custom { val, .. } => {
             let collected = val.to_base_value(val_span)?;
             value_to_json_value(&collected)?
         }
