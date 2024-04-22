@@ -177,7 +177,7 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
             return Err(LabeledError::new("Error found")
                 .with_label(format!("Error found: {error}"), v.span()));
         }
-        Value::Closure { .. } | Value::Block { .. } | Value::Range { .. } => SerdeJsonValue::Null,
+        Value::Closure { .. } | Value::Range { .. } => SerdeJsonValue::Null,
         // | Value::MatchPattern { .. } => SerdeJsonValue::Null,
         Value::Binary { val, .. } => SerdeJsonValue::Array(
             val.iter()
