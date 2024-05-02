@@ -911,7 +911,7 @@ dependencies = [
 
 [[package]]
 name = "nu-engine"
-version = "0.92.3"
+version = "0.93.1"
 dependencies = [
  "nu-glob",
  "nu-path",
@@ -921,11 +921,11 @@ dependencies = [
 
 [[package]]
 name = "nu-glob"
-version = "0.92.3"
+version = "0.93.1"
 
 [[package]]
 name = "nu-path"
-version = "0.92.3"
+version = "0.93.1"
 dependencies = [
  "dirs-next",
  "omnipath",
@@ -934,29 +934,46 @@ dependencies = [
 
 [[package]]
 name = "nu-plugin"
-version = "0.92.3"
+version = "0.93.1"
 dependencies = [
- "bincode",
- "interprocess",
  "log",
- "miette",
  "nix",
  "nu-engine",
+ "nu-plugin-core",
+ "nu-plugin-protocol",
  "nu-protocol",
- "nu-system",
- "nu-utils",
+ "thiserror",
+]
+
+[[package]]
+name = "nu-plugin-core"
+version = "0.93.1"
+dependencies = [
+ "interprocess",
+ "log",
+ "nu-plugin-protocol",
+ "nu-protocol",
  "rmp-serde",
- "semver",
  "serde",
  "serde_json",
- "thiserror",
- "typetag",
  "windows 0.54.0",
 ]
 
 [[package]]
+name = "nu-plugin-protocol"
+version = "0.93.1"
+dependencies = [
+ "bincode",
+ "nu-protocol",
+ "nu-utils",
+ "semver",
+ "serde",
+ "typetag",
+]
+
+[[package]]
 name = "nu-protocol"
-version = "0.92.3"
+version = "0.93.1"
 dependencies = [
  "brotli",
  "byte-unit",
@@ -979,7 +996,7 @@ dependencies = [
 
 [[package]]
 name = "nu-system"
-version = "0.92.3"
+version = "0.93.1"
 dependencies = [
  "chrono",
  "libc",
@@ -996,7 +1013,7 @@ dependencies = [
 
 [[package]]
 name = "nu-utils"
-version = "0.92.3"
+version = "0.93.1"
 dependencies = [
  "crossterm_winapi",
  "log",
@@ -1365,9 +1382,9 @@ dependencies = [
 
 [[package]]
 name = "rmp-serde"
-version = "1.2.0"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "938a142ab806f18b88a97b0dea523d39e0fd730a064b035726adcfc58a8a5188"
+checksum = "52e599a477cf9840e92f2cde9a7189e67b42c57532749bf90aea6ec10facd4db"
 dependencies = [
  "byteorder",
  "rmp",
@@ -1444,18 +1461,18 @@ checksum = "92d43fe69e652f3df9bdc2b85b2854a0825b86e4fb76bc44d945137d053639ca"
 
 [[package]]
 name = "serde"
-version = "1.0.192"
+version = "1.0.200"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bca2a08484b285dcb282d0f67b26cadc0df8b19f8c12502c13d966bf9482f001"
+checksum = "ddc6f9cc94d67c0e21aaf7eda3a010fd3af78ebf6e096aa6e2e13c79749cce4f"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.192"
+version = "1.0.200"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6c7207fbec9faa48073f3e3074cbe553af6ea512d7c21ba46e434e70ea9fbc1"
+checksum = "856f046b9400cee3c8c94ed572ecdb752444c24528c035cd35882aad6f492bcb"
 dependencies = [
  "proc-macro2",
  "quote",
