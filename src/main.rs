@@ -191,10 +191,6 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
             });
             SerdeJsonValue::Object(m)
         }
-        Value::LazyRecord { val, .. } => {
-            let collected = val.collect()?;
-            value_to_json_value(&collected)?
-        }
         Value::Custom { val, .. } => {
             let collected = val.to_base_value(val_span)?;
             value_to_json_value(&collected)?
