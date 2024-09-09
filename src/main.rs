@@ -39,7 +39,7 @@ impl SimplePluginCommand for NuJsonPath {
         "json path"
     }
 
-    fn usage(&self) -> &str {
+    fn description(&self) -> &str {
         "View json path results"
     }
     fn signature(&self) -> Signature {
