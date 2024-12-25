@@ -151,7 +151,7 @@ pub fn value_to_json_value(v: &Value) -> Result<SerdeJsonValue, LabeledError> {
     let val_span = v.span();
     Ok(match v {
         Value::Bool { val, .. } => SerdeJsonValue::Bool(*val),
-        Value::Filesize { val, .. } => SerdeJsonValue::Number((*val).into()),
+        Value::Filesize { val, .. } => SerdeJsonValue::Number((*val).get().into()),
         Value::Duration { val, .. } => SerdeJsonValue::Number((*val).into()),
         Value::Date { val, .. } => SerdeJsonValue::String(val.to_string()),
         Value::Float { val, .. } => {
