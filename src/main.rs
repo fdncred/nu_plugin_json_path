@@ -1,10 +1,10 @@
 use nu_plugin::{
-    serve_plugin, EngineInterface, EvaluatedCall, MsgPackSerializer, Plugin, PluginCommand,
-    SimplePluginCommand,
+    EngineInterface, EvaluatedCall, MsgPackSerializer, Plugin, PluginCommand, SimplePluginCommand,
+    serve_plugin,
 };
 use nu_protocol::{
-    ast::PathMember, Category, Example, LabeledError, Record, ShellError, Signature, Span, Spanned,
-    SyntaxShape, Value,
+    Category, Example, LabeledError, Record, ShellError, Signature, Span, Spanned, SyntaxShape,
+    Value, ast::PathMember,
 };
 use serde_json::Value as SerdeJsonValue;
 use serde_json_path::JsonPath;
@@ -48,7 +48,7 @@ impl SimplePluginCommand for NuJsonPath {
             .category(Category::Experimental)
     }
 
-    fn examples(&self) -> Vec<Example> {
+    fn examples(&self) -> Vec<Example<'_>> {
         vec![Example {
             description: "List the authors of all books in the store".into(),
             example: "open -r test.json | json path '$.store.book[*].author'".into(),
@@ -223,7 +223,7 @@ fn main() {
 
 #[cfg(test)]
 mod test {
-    use serde_json::{json, Value as SerdeJsonValue};
+    use serde_json::{Value as SerdeJsonValue, json};
     use serde_json_path::JsonPath;
 
     fn spec_example_json() -> SerdeJsonValue {
@@ -303,9 +303,11 @@ mod test {
         let path = JsonPath::parse("$.store.*").unwrap();
         let nodes = path.query(&value).all();
         assert_eq!(nodes.len(), 2);
-        assert!(nodes
-            .iter()
-            .any(|&node| node == value.pointer("/store/book").unwrap()));
+        assert!(
+            nodes
+                .iter()
+                .any(|&node| node == value.pointer("/store/book").unwrap())
+        );
     }
 
     #[test]
