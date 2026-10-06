@@ -1575,7 +1575,7 @@ dependencies = [
 
 [[package]]
 name = "nu_plugin_json_path"
-version = "0.25.0"
+version = "0.26.1"
 dependencies = [
  "nu-path",
  "nu-plugin",
