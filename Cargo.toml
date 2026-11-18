@@ -23,10 +23,6 @@ nu-path = "0.117.0"
 serde_json = "1.0.151"
 serde_json_path = "0.7.2"
 
-[dev-dependencies]
-nu-plugin-test-support = "0.117.0"
-# nu-plugin-test-support = { path = "../nushell/crates/nu-plugin-test-support" }
-
 [profile.release]
 opt-level = "s"     # Optimize for size
 strip = "debuginfo"
