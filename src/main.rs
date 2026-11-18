@@ -50,8 +50,8 @@ impl SimplePluginCommand for NuJsonPath {
 
     fn examples(&self) -> Vec<Example<'_>> {
         vec![Example {
-            description: "List the authors of all books in the store".into(),
-            example: "open -r test.json | json path '$.store.book[*].author'".into(),
+            description: "List the authors of all books in the store",
+            example: "open -r test.json | json path '$.store.book[*].author'",
             result: None,
         }]
     }

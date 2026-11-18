@@ -48,3 +48,7 @@ bin-dir = "{ name }-{ target }/{ bin }{ binary-ext }"
 [package.metadata.binstall.overrides.'cfg(windows)']
 pkg-fmt = "zip"
 bin-dir = "{ bin }{ binary-ext }"
+
+[lints.clippy]
+# ShellError is large by design and is part of the plugin API; nushell allows this lint too.
+result_large_err = "allow"
